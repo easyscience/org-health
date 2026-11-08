@@ -31,6 +31,8 @@ API = 'https://api.github.com'
 NOW = dt.datetime.now(dt.timezone.utc)
 WINDOW_DAYS = 365
 RECENT_DAYS = 90
+LARGE_PR_LINES = 500  # additions + deletions above which an open PR counts as large
+CI_SAMPLES = 10  # successful runs per workflow used for the median duration
 
 
 # --------------------------------------------------------------------------- shell / git
@@ -166,6 +168,20 @@ def drift(path: str, base: str, head: str, sources: list[str]) -> dict:
     return {'files': n('file'), 'lines': n('insertion') + n('deletion')}
 
 
+def since_release(path: str, tag: str, ref: str) -> dict:
+    """Non-merge commits on ref that are not in tag.
+
+    The clone is shallow, so when the tag's history does not meet ref's inside the
+    fetched window the count is only a lower bound (complete=False).
+    """
+    tag_ref = f'refs/tags/{tag}'
+    if not ok(f'git rev-parse -q --verify {tag_ref}', cwd=path):
+        return {'tag': tag, 'commits': None, 'complete': False}
+    count = sh(f'git rev-list --count --no-merges {tag_ref}..{ref}', cwd=path).strip()
+    connected = bool(sh(f'git merge-base {tag_ref} {ref}', cwd=path).strip())
+    return {'tag': tag, 'commits': int(count) if count.isdigit() else None, 'complete': connected}
+
+
 # --------------------------------------------------------------------------- GitHub API
 
 
@@ -219,6 +235,15 @@ def days_since(iso: str | None) -> float | None:
     return round((NOW - dt.datetime.fromisoformat(iso.replace('Z', '+00:00'))).total_seconds() / 86400, 1)
 
 
+def run_minutes(run: dict) -> float | None:
+    """Wall-clock minutes of a completed workflow run (latest attempt)."""
+    a, b = run.get('run_started_at'), run.get('updated_at')
+    if run.get('status') != 'completed' or not a or not b:
+        return None
+    t = lambda s: dt.datetime.fromisoformat(s.replace('Z', '+00:00'))  # noqa: E731
+    return round(max(0.0, (t(b) - t(a)).total_seconds() / 60), 1)
+
+
 def github_metrics(gh: GitHub, owner: str, name: str, branches: list[str]) -> dict:
     base = f'/repos/{owner}/{name}'
     cutoff = NOW - dt.timedelta(days=RECENT_DAYS)
@@ -249,16 +274,23 @@ def github_metrics(gh: GitHub, owner: str, name: str, branches: list[str]) -> di
     ci = {}
     for br in branches:
         runs = (gh.get(f'{base}/actions/runs', {'branch': br, 'per_page': 100}) or {}).get('workflow_runs', [])
-        latest = {}
+        by_wf = collections.defaultdict(list)
         for r in runs:  # newest first
             if r['event'] in ('pull_request', 'pull_request_target'):
                 continue
-            latest.setdefault(r['name'], r)
-        ci[br] = [{
-            'workflow': w, 'file': os.path.basename(r.get('path') or ''),
-            'status': r['status'], 'conclusion': r['conclusion'],
-            'at': r['updated_at'], 'url': r['html_url'],
-        } for w, r in sorted(latest.items())]
+            by_wf[r['name']].append(r)
+        ci[br] = []
+        for w, rs in sorted(by_wf.items()):
+            r = rs[0]
+            ok_mins = [m for m in (run_minutes(x) for x in rs if x['conclusion'] == 'success') if m is not None][:CI_SAMPLES]
+            ci[br].append({
+                'workflow': w, 'file': os.path.basename(r.get('path') or ''),
+                'status': r['status'], 'conclusion': r['conclusion'],
+                'at': r['updated_at'], 'url': r['html_url'],
+                'minutes': run_minutes(r),
+                'median_minutes': round(statistics.median(ok_mins), 1) if ok_mins else None,
+                'samples': len(ok_mins),
+            })
 
     rel = gh.get(f'{base}/releases/latest') or {}
     return {
@@ -276,9 +308,13 @@ def github_metrics(gh: GitHub, owner: str, name: str, branches: list[str]) -> di
             'oldest_days': max((days_since(p['created_at']) for p in open_prs), default=None),
             'merged_90d': len(merged),
             'median_days_to_merge': round(statistics.median(merged), 1) if merged else None,
+            'large': sum(1 for p in pr_details if not p.get('draft')
+                         and (p.get('additions') or 0) + (p.get('deletions') or 0) > LARGE_PR_LINES),
             'list': [{'number': p.get('number'), 'title': p.get('title'), 'draft': p.get('draft'),
                       'base': (p.get('base') or {}).get('ref'), 'author': (p.get('user') or {}).get('login'),
-                      'age_days': days_since(p.get('created_at')), 'url': p.get('html_url')} for p in pr_details],
+                      'age_days': days_since(p.get('created_at')), 'url': p.get('html_url'),
+                      'additions': p.get('additions'), 'deletions': p.get('deletions'),
+                      'files': p.get('changed_files')} for p in pr_details],
         },
         'ci': ci,
         'release': {'tag': rel.get('tag_name'), 'date': (rel.get('published_at') or '')[:10]} if rel else None,
@@ -335,6 +371,9 @@ def main() -> None:
         if gh:
             rec['github'] = github_metrics(gh, owner, name, branches)
             rec['coverage'] = {br: codecov(owner, name, br) for br in branches}
+        # same tag the page shows as the release: the GitHub release, else the newest git tag
+        tag = ((rec.get('github') or {}).get('release') or {}).get('tag') or (rec['latest_tag'] or {}).get('tag')
+        rec['since_release'] = since_release(path, tag, f'origin/{main_branch}') if tag else None
         out['repos'].append(rec)
 
     os.makedirs(args.out, exist_ok=True)
@@ -354,6 +393,8 @@ def history_row(r: dict) -> dict:
         'open_issues': (g.get('issues') or {}).get('open'), 'open_prs': (g.get('prs') or {}).get('open'),
         'ci_failing': sum(1 for c in ci if c['conclusion'] == 'failure') if ci else None,
         'coverage': (r.get('coverage') or {}).get(r['main_branch']),
+        'ci_slowest_min': max((c['median_minutes'] for c in ci if c.get('median_minutes') is not None), default=None),
+        'commits_since_release': (r.get('since_release') or {}).get('commits'),
     }
 
 

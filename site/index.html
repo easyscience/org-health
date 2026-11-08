@@ -40,7 +40,7 @@
     <section class="card" id="prs">
       <div class="card-head">
         <h2>Open pull requests</h2>
-        <p class="note">Oldest first. Drafts are muted.</p>
+        <p class="note">Oldest first. Drafts are muted. Size is lines added plus deleted; over 500 is marked.</p>
       </div>
       <div class="scroll tall"><table class="tbl" id="pr-table"></table></div>
     </section>
@@ -74,6 +74,8 @@
         <option value="coverage">Test coverage (%)</option>
         <option value="complex_functions">Functions graded C or worse</option>
         <option value="sloc">Source lines</option>
+        <option value="commits_since_release">Commits since last release</option>
+        <option value="ci_slowest_min">Slowest CI workflow (median minutes)</option>
       </select>
     </div>
     <div id="trend" class="trend"></div>
@@ -96,8 +98,9 @@
       <dt>Code</dt><dd>radon (SLOC, cyclomatic complexity, maintainability index) and interrogate (docstring coverage, with each repository's own settings), the same tools as each repository's dashboard.yml.</dd>
       <dt>Tests</dt><dd>Count of test functions under tests/. Test coverage comes from Codecov where a repository reports to it.</dd>
       <dt>Issues and PRs</dt><dd>GitHub REST API. Open issues exclude pull requests. Awaiting review means a non-draft PR with a requested reviewer.</dd>
-      <dt>CI</dt><dd>Latest completed or running non-PR workflow run per workflow and branch.</dd>
-      <dt>Unreleased</dt><dd>Lines changed in source and tests between master and develop.</dd>
+      <dt>CI</dt><dd>Latest completed or running non-PR workflow run per workflow and branch. Duration is wall-clock time from start to finish of the latest attempt; Slowest CI is the workflow with the highest median over its last 10 successful runs.</dd>
+      <dt>PR size</dt><dd>Lines added plus deleted in the pull request, as GitHub reports it. Non-draft PRs over 500 lines are counted as large.</dd>
+      <dt>Unreleased</dt><dd>Lines changed in source and tests between master and develop. Commits since release counts non-merge commits on the development branch that are not in the latest release tag; ≥ marks a lower bound when the release predates the cloned history.</dd>
       <dt>Repositories</dt><dd>Listed in repos.yml in this repository.</dd>
     </dl>
   </details>

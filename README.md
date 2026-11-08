@@ -7,9 +7,9 @@ A page that shows code quality, open issues, pull requests, and CI status across
 ## What it shows
 
 - A summary line and totals: failing workflows, open issues and PRs, source lines, tests and commits.
-- A scorecard with one sortable row per repository: CI, issues, PRs, oldest PR, Codecov coverage, docstring coverage against core's 45% gate, complexity, tests, commits, latest release, and lines on develop that are not yet on master.
-- CI status: the latest non-PR run of each key workflow on master and develop, linked to the run.
-- Open pull requests, oldest first, and issue/PR flow over the last 90 days.
+- A scorecard with one sortable row per repository: CI, slowest CI workflow (median duration), issues, PRs, oldest PR, Codecov coverage, docstring coverage against core's 45% gate, complexity, tests, commits, latest release, commits since that release, and lines on develop that are not yet on master.
+- CI status: the latest non-PR run of each key workflow on master and develop, linked to the run, with its duration.
+- Open pull requests, oldest first, with their size in lines changed, and issue/PR flow over the last 90 days.
 - Commits per month for each repository, all on one scale.
 - Trends over time from `history.json`, which gains one point per repository on each build.
 - The most complex functions in each repository.

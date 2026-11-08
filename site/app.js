@@ -15,6 +15,9 @@
   const dash = '–';
   const n = (v, f = fmt) => (v == null ? dash : f(v));
   const ageLabel = (d) => (d == null ? dash : d < 1 ? '<1 d' : d < 60 ? `${Math.round(d)} d` : `${Math.round(d / 30)} mo`);
+  const minLabel = (m) => (m == null ? dash : m < 1 ? '<1 min' : m < 10 ? `${m.toFixed(1)} min` : m < 90 ? `${Math.round(m)} min` : `${(m / 60).toFixed(1)} h`);
+  const LARGE_PR = 500;
+  const prLines = (p) => (p.additions == null ? null : p.additions + (p.deletions || 0));
   const tip = document.getElementById('tip');
   const showTip = (ev, lines) => {
     tip.replaceChildren(...lines.map(([t, c]) => el('div', { class: c, text: t })));
@@ -45,6 +48,7 @@
       ciMain: ci,
       ciFailing: ci ? ci.filter((x) => x.conclusion === 'failure' || x.conclusion === 'timed_out').length : null,
       ciDefaultFailing: ciDefault ? ciDefault.filter((x) => x.conclusion === 'failure').length : null,
+      ciSlowest: ci ? ci.filter((x) => x.median_minutes != null).sort((a, b2) => b2.median_minutes - a.median_minutes)[0] || null : null,
       cov: r.coverage ? r.coverage[r.main_branch] : null,
       release: (gh && gh.release && gh.release.tag) ? gh.release : r.latest_tag,
     };
@@ -74,7 +78,7 @@
   const tiles = [
     ['Failing workflows', hasGH ? d3.sum(repos, (r) => r.ciFailing || 0) : null, 'Latest run, development branches', (v) => v > 0],
     ['Open issues', hasGH ? d3.sum(repos, (r) => r.gh?.issues.open || 0) : null, hasGH ? `${fmt(d3.sum(repos, (r) => r.gh?.issues.bugs || 0))} labelled bug` : 'Needs the GitHub API'],
-    ['Open pull requests', hasGH ? d3.sum(repos, (r) => r.gh?.prs.open || 0) : null, hasGH ? `${fmt(d3.sum(repos, (r) => r.gh?.prs.awaiting_review || 0))} awaiting review` : 'Needs the GitHub API'],
+    ['Open pull requests', hasGH ? d3.sum(repos, (r) => r.gh?.prs.open || 0) : null, hasGH ? `${fmt(d3.sum(repos, (r) => r.gh?.prs.awaiting_review || 0))} awaiting review · ${fmt(d3.sum(repos, (r) => r.gh?.prs.large || 0))} over ${LARGE_PR} lines` : 'Needs the GitHub API'],
     ['Python source lines', d3.sum(repos, (r) => r.c?.sloc || 0), `${fmt(d3.sum(repos, (r) => r.c?.qml_sloc || 0))} QML lines in apps`],
     ['Test functions', d3.sum(repos, (r) => r.c?.tests || 0), 'def test_… under tests/'],
     ['Commits, 12 months', d3.sum(repos, (r) => r.git.commits_12m), `${fmt(d3.sum(repos, (r) => r.git.commits_90d))} in the last 90 days`],
@@ -150,6 +154,7 @@
     { key: 'repo', label: 'Repository', cell: repoLink, sort: (r) => r.name, text: true },
     { key: 'family', label: 'Family', cls: 'l sec muted', cell: (r) => r.family, sort: (r) => r.family, text: true },
     { key: 'ci', label: 'CI', cell: ciCell, sort: (r) => r.ciFailing },
+    { key: 'citime', label: 'Slowest CI', cls: 'sec', cell: (r) => (r.ciSlowest ? el('span', { title: `${r.ciSlowest.workflow}: median of ${r.ciSlowest.samples} successful runs`, text: minLabel(r.ciSlowest.median_minutes) }) : dash), sort: (r) => r.ciSlowest?.median_minutes },
     { key: 'issues', label: 'Issues', cell: (r) => n(r.gh?.issues.open), sort: (r) => r.gh?.issues.open },
     { key: 'prs', label: 'PRs', cell: (r) => (r.gh ? `${r.gh.prs.open}${r.gh.prs.draft ? ` (${r.gh.prs.draft} draft)` : ''}` : dash), sort: (r) => r.gh?.prs.open },
     { key: 'oldest', label: 'Oldest PR', cls: 'sec', cell: (r) => ageLabel(r.gh?.prs.oldest_days), sort: (r) => r.gh?.prs.oldest_days, flag: (r) => (r.gh?.prs.oldest_days > 90 ? 'warn' : '') },
@@ -161,6 +166,7 @@
     { key: 'tests', label: 'Tests', cell: (r) => n(r.c?.tests), sort: (r) => r.c?.tests, flag: (r) => (r.c && r.c.sloc > 0 && r.c.tests === 0 ? 'bad' : '') },
     { key: 'commits', label: 'Commits 12 mo', cell: (r) => fmt(r.git.commits_12m), sort: (r) => r.git.commits_12m },
     { key: 'release', label: 'Release', cls: 'l sec', cell: (r) => (r.release ? `${r.release.tag} · ${r.release.date}` : 'none'), sort: (r) => r.release?.date, text: true },
+    { key: 'since', label: 'Commits since release', cell: (r) => (r.since_release?.commits == null ? dash : el('span', { title: `Non-merge commits on ${r.main_branch} not in ${r.since_release.tag}${r.since_release.complete ? '' : ' (lower bound: the release is older than the cloned history)'}`, text: (r.since_release.complete ? '' : '≥') + fmt(r.since_release.commits) })), sort: (r) => r.since_release?.commits },
     { key: 'unrel', label: 'Unreleased lines', cls: 'sec', cell: (r) => n(r.unreleased?.lines), sort: (r) => r.unreleased?.lines },
   ], repos, hasGH ? { key: 'ci', dir: -1 } : { key: 'commits', dir: -1 });
 
@@ -186,7 +192,9 @@
           if (!run) return el('td', { class: 'muted', text: '·' });
           const state = run.status !== 'completed' ? 'running' : run.conclusion || 'neutral';
           const a = el('a', { class: 'chip ' + state, href: run.url, target: '_blank', rel: 'noopener', text: state === 'success' ? '✓' : state === 'failure' ? '✕' : state === 'running' ? '…' : '–' });
-          a.addEventListener('pointerenter', (ev) => showTip(ev, [[`${r.name} · ${br} · ${label(c)}`, 'k'], [`${state} · ${d3.utcFormat('%b %-d %H:%M')(new Date(run.at))}`]]));
+          const tipLines = [[`${r.name} · ${br} · ${label(c)}`, 'k'], [`${state} · ${d3.utcFormat('%b %-d %H:%M')(new Date(run.at))}${run.minutes != null ? ` · ${minLabel(run.minutes)}` : ''}`]];
+          if (run.median_minutes != null) tipLines.push([`median ${minLabel(run.median_minutes)} over ${run.samples} successful runs`, 'k']);
+          a.addEventListener('pointerenter', (ev) => showTip(ev, tipLines));
           a.addEventListener('pointerleave', hideTip);
           return el('td', {}, a);
         }))))
@@ -197,11 +205,16 @@
   const prRows = repos.flatMap((r) => (r.gh?.prs.list || []).map((p) => ({ ...p, repo: r })));
   prRows.sort((a, b2) => (b2.age_days || 0) - (a.age_days || 0));
   document.getElementById('pr-table').replaceChildren(
-    el('thead', {}, el('tr', {}, el('th', { text: 'Repository' }), el('th', { class: 'l', text: 'Pull request' }), el('th', { class: 'l sec', text: 'Author' }), el('th', { text: 'Age' }))),
+    el('thead', {}, el('tr', {}, el('th', { text: 'Repository' }), el('th', { class: 'l', text: 'Pull request' }), el('th', { class: 'l sec', text: 'Author' }), el('th', { text: 'Size' }), el('th', { text: 'Age' }))),
     el('tbody', {}, ...(hasGH ? prRows.map((p) => el('tr', { class: p.draft ? 'muted' : '' },
       el('td', {}, el('span', { class: 'repo', text: p.repo.name })),
       el('td', { class: 'l' }, el('a', { href: p.url, target: '_blank', rel: 'noopener', text: `#${p.number} ${(p.title || '').slice(0, 70)}` })),
       el('td', { class: 'l sec muted', text: p.author }),
+      prLines(p) == null ? el('td', { text: dash }) : el('td', {
+        class: 'mono' + (!p.draft && prLines(p) > LARGE_PR ? ' warn' : ''),
+        title: `+${fmt(p.additions)} −${fmt(p.deletions || 0)} in ${fmt(p.files || 0)} files`,
+        text: fmt(prLines(p)),
+      }),
       el('td', { class: !p.draft && p.age_days > 30 ? 'warn' : '', text: ageLabel(p.age_days) }))) : [el('tr', {}, el('td', { class: 'muted', text: 'Needs the GitHub API step of the build.' }))])));
 
   document.getElementById('flow-table').replaceChildren(
