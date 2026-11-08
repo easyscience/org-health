@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EasyScience Org Health</title>
+<meta name="description" content="Code quality, issues, pull requests and CI status across EasyScience repositories, rebuilt on a schedule.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,400&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="page">
+  <header class="head">
+    <p class="eyebrow">easyScience · org health</p>
+    <h1>EasyScience org health</h1>
+    <p class="take" id="takeaway">Loading the latest snapshot…</p>
+    <p class="meta"><span id="generated">—</span> · <a href="data/latest.json">latest.json</a> · <a href="data/history.json">history.json</a></p>
+  </header>
+
+  <section class="tiles" id="tiles" aria-label="Totals"></section>
+
+  <section class="card" id="scorecard">
+    <div class="card-head">
+      <h2>Repository scorecard</h2>
+      <p class="note">Development branch (master where there is none). Click a header to sort. Red marks a failing CI run, docstring coverage under the gate, or no tests.</p>
+    </div>
+    <div class="scroll"><table class="tbl" id="score-table"></table></div>
+  </section>
+
+  <section class="card" id="ci">
+    <div class="card-head">
+      <h2>CI status</h2>
+      <p class="note">Latest push or scheduled run of each workflow on master and develop. Pull-request runs are left out.</p>
+    </div>
+    <div class="scroll"><table class="tbl ci" id="ci-table"></table></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card" id="prs">
+      <div class="card-head">
+        <h2>Open pull requests</h2>
+        <p class="note">Oldest first. Drafts are muted.</p>
+      </div>
+      <div class="scroll tall"><table class="tbl" id="pr-table"></table></div>
+    </section>
+    <section class="card" id="flow">
+      <div class="card-head">
+        <h2>Issue and PR flow, last 90 days</h2>
+        <p class="note">Issues opened against closed, and PRs merged with their median time to merge.</p>
+      </div>
+      <div class="scroll"><table class="tbl" id="flow-table"></table></div>
+    </section>
+  </div>
+
+  <section class="card" id="activity">
+    <div class="card-head">
+      <h2>Commits per month</h2>
+      <p class="note">Non-merge commits on the development branch over the last 12 months. All panels share one scale.</p>
+    </div>
+    <div class="mult" id="mult"></div>
+  </section>
+
+  <section class="card" id="trends">
+    <div class="card-head">
+      <h2>Trends</h2>
+      <p class="note">One point per build. Pick a measure.</p>
+      <label class="sr" for="trend-metric">Measure</label>
+      <select id="trend-metric">
+        <option value="open_issues">Open issues</option>
+        <option value="open_prs">Open pull requests</option>
+        <option value="ci_failing">Failing workflows</option>
+        <option value="doc_coverage">Docstring coverage (%)</option>
+        <option value="coverage">Test coverage (%)</option>
+        <option value="complex_functions">Functions graded C or worse</option>
+        <option value="sloc">Source lines</option>
+      </select>
+    </div>
+    <div id="trend" class="trend"></div>
+  </section>
+
+  <section class="card" id="hotspots">
+    <div class="card-head">
+      <h2>Most complex functions</h2>
+      <p class="note">Top five per repository by radon cyclomatic complexity. C starts at 11, D at 21.</p>
+      <label class="sr" for="hot-q">Filter</label>
+      <input id="hot-q" type="search" placeholder="Filter by repository, function or file">
+    </div>
+    <div class="scroll tall"><table class="tbl" id="hot-table"></table></div>
+  </section>
+
+  <details class="method">
+    <summary>How these numbers are measured</summary>
+    <dl>
+      <dt>Schedule</dt><dd>A GitHub Actions workflow rebuilds this page every six hours and on demand.</dd>
+      <dt>Code</dt><dd>radon (SLOC, cyclomatic complexity, maintainability index) and interrogate (docstring coverage, with each repository's own settings), the same tools as each repository's dashboard.yml.</dd>
+      <dt>Tests</dt><dd>Count of test functions under tests/. Test coverage comes from Codecov where a repository reports to it.</dd>
+      <dt>Issues and PRs</dt><dd>GitHub REST API. Open issues exclude pull requests. Awaiting review means a non-draft PR with a requested reviewer.</dd>
+      <dt>CI</dt><dd>Latest completed or running non-PR workflow run per workflow and branch.</dd>
+      <dt>Unreleased</dt><dd>Lines changed in source and tests between master and develop.</dd>
+      <dt>Repositories</dt><dd>Listed in repos.yml in this repository.</dd>
+    </dl>
+  </details>
+</main>
+<div class="tip" id="tip" hidden></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+# Repositories tracked by the org health board.
+# source: folder(s) scanned for Python code metrics (empty = no code metrics).
+owner: easyScience
+develop_branch: develop
+docstring_gate: 45 # % — core's interrogate fail-under, used as the reference line
+
+repos:
+  - name: core
+    family: Core
+    kind: lib
+    source: [src/easyscience]
+  - name: reflectometry-lib
+    family: Reflectometry
+    kind: lib
+    source: [src/easyreflectometry]
+  - name: EasyReflectometryApp
+    family: Reflectometry
+    kind: app
+    source: [EasyReflectometryApp]
+  - name: dynamics-lib
+    family: Dynamics
+    kind: lib
+    source: [src/easydynamics]
+  - name: dynamics-app
+    family: Dynamics
+    kind: app
+    source: []
+  - name: imaging-lib
+    family: Imaging
+    kind: lib
+    source: [src/easyimaging]
+  - name: imaging-app
+    family: Imaging
+    kind: app
+    source: [EasyImagingApp]
+  - name: shapes-app
+    family: Shapes
+    kind: app
+    source: [src/easyshapes_app]

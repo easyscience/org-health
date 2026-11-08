@@ -1,0 +1,3 @@
+radon==6.0.1
+interrogate==1.7.0
+PyYAML==6.0.2
