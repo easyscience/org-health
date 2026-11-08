@@ -9,6 +9,14 @@ repos:
     family: Core
     kind: lib
     source: [src/easyscience]
+  - name: gui-components
+    family: Core
+    kind: gui
+    source: [src/EasyApplication]
+  - name: diffraction-lib
+    family: Diffraction
+    kind: lib
+    source: [src/easydiffraction]
   - name: reflectometry-lib
     family: Reflectometry
     kind: lib
@@ -21,18 +29,10 @@ repos:
     family: Dynamics
     kind: lib
     source: [src/easydynamics]
-  - name: dynamics-app
-    family: Dynamics
-    kind: app
-    source: []
   - name: imaging-lib
     family: Imaging
     kind: lib
     source: [src/easyimaging]
-  - name: imaging-app
-    family: Imaging
-    kind: app
-    source: [EasyImagingApp]
   - name: shapes-app
     family: Shapes
     kind: app
