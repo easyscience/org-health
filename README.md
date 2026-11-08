@@ -1,10 +1,8 @@
 # org-health
 
-One page that shows code quality, open issues, pull requests and CI status across the EasyScience repositories. It is rebuilt every six hours and published with GitHub Pages:
+A page that shows code quality, open issues, pull requests, and CI status across the EasyScience repositories. It is rebuilt every six hours and published with GitHub Pages:
 
-**https://easyscience.github.io/org-health/** (once Pages is enabled)
-
-The per-repository badge pages in [`easyScience/dashboard`](https://github.com/easyScience/dashboard) are left as they are. This repository reads the other repositories and writes nothing back to them.
+**https://easyscience.github.io/org-health/**
 
 ## What it shows
 
@@ -31,15 +29,6 @@ repos.yml ──> collector/collect.py ──> site/data/latest.json + history.j
 - `site/` is a static page: `index.html`, `app.js` and `style.css`, plus d3 loaded from cdnjs. There is no build step.
 - `.github/workflows/build.yml` runs the collector every 6 hours, on push to `main`, on manual dispatch, and on `repository_dispatch` (`refresh`). It then deploys `site/` with `actions/deploy-pages`.
 
-## Setup (one time)
-
-1. Create the repository `easyScience/org-health` (public) and push this code to `main`.
-2. Go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**.
-3. Run the workflow from **Actions → Build and publish board → Run workflow**. The first run takes about 2 minutes.
-4. Optional: add a repository secret `ORG_HEALTH_TOKEN`. Without it the workflow uses `github.token`, which can read all public repositories in the org at 1,000 requests per hour. One build uses roughly 60–120 requests, so this only matters for private repositories. Use either:
-   - a fine-grained PAT with read access to *Actions, Issues, Pull requests, Metadata*, or
-   - a token from the existing `easyscience[bot]` app via `actions/create-github-app-token`.
-5. Optional: to rebuild right after a tracked repository's CI finishes, add a step there that sends a `repository_dispatch` with type `refresh` to this repository.
 
 ## Run locally
 
