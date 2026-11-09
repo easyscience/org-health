@@ -79,8 +79,6 @@
     ['Failing workflows', hasGH ? d3.sum(repos, (r) => r.ciFailing || 0) : null, 'Latest run, development branches', (v) => v > 0],
     ['Open issues', hasGH ? d3.sum(repos, (r) => r.gh?.issues.open || 0) : null, hasGH ? `${fmt(d3.sum(repos, (r) => r.gh?.issues.bugs || 0))} labelled bug` : 'Needs the GitHub API'],
     ['Open pull requests', hasGH ? d3.sum(repos, (r) => r.gh?.prs.open || 0) : null, hasGH ? `${fmt(d3.sum(repos, (r) => r.gh?.prs.awaiting_review || 0))} awaiting review · ${fmt(d3.sum(repos, (r) => r.gh?.prs.large || 0))} over ${LARGE_PR} lines` : 'Needs the GitHub API'],
-    ['Python source lines', d3.sum(repos, (r) => r.c?.sloc || 0), `${fmt(d3.sum(repos, (r) => r.c?.qml_sloc || 0))} QML lines in apps`],
-    ['Test functions', d3.sum(repos, (r) => r.c?.tests || 0), 'def test_… under tests/'],
     ['Commits, 12 months', d3.sum(repos, (r) => r.git.commits_12m), `${fmt(d3.sum(repos, (r) => r.git.commits_90d))} in the last 90 days`],
   ];
   document.getElementById('tiles').replaceChildren(...tiles.map(([l, v, note, alert]) =>
@@ -88,18 +86,27 @@
       el('div', { class: 'tile-l', text: l }), el('div', { class: 'tile-v', text: n(v) }), el('div', { class: 'tile-n', text: note }))));
 
   // ---------------------------------------------------------------- sortable table helper
+  // cols: { key, label, cell, sort?, text?, cls?, flag?, tip? }. Returns { update(rows) } to redraw with new rows, keeping the sort.
   function sortable(table, cols, rows, initial) {
     let sort = initial;
     const head = el('thead', {}, el('tr', {}, ...cols.map((c) => {
-      const th = el('th', { class: c.cls });
+      const th = el('th', { class: [c.cls, c.tip ? 'has-tip' : ''].filter(Boolean).join(' ') || null });
       if (c.sort) {
-        const btn = el('button', { type: 'button', text: c.label });
+        const btn = el('button', { type: 'button', text: c.label, 'aria-description': c.tip });
         btn.addEventListener('click', () => {
           sort = { key: c.key, dir: sort.key === c.key ? -sort.dir : (c.text ? 1 : -1) };
           draw();
         });
+        if (c.tip) {
+          btn.addEventListener('focus', () => { const b = btn.getBoundingClientRect(); showTip({ clientX: b.left + b.width / 2, clientY: b.top }, [[c.label, 'k'], [c.tip]]); });
+          btn.addEventListener('blur', hideTip);
+        }
         th.append(btn);
       } else th.textContent = c.label;
+      if (c.tip) {
+        th.addEventListener('pointerenter', (ev) => showTip(ev, [[c.label, 'k'], [c.tip]]));
+        th.addEventListener('pointerleave', hideTip);
+      }
       th.dataset.key = c.key;
       return th;
     })));
@@ -129,6 +136,7 @@
       }))));
     }
     draw();
+    return { update(next) { rows = next; draw(); } };
   }
 
   const repoLink = (r) => el('span', { class: 'repo' }, el('a', { href: r.url, target: '_blank', rel: 'noopener', text: r.name }));
@@ -150,6 +158,25 @@
       : el('span', { class: 'okc', text: `${ok}/${r.ciMain.length} passing` });
   };
 
+  const SCORE_TIPS = {
+    repo: 'GitHub repository. Figures are for the development branch (develop, or master where there is none).',
+    family: 'Science area the repository belongs to, from repos.yml.',
+    ci: 'Latest push or scheduled run of each workflow on the development branch. Failing counts runs that failed or timed out.',
+    citime: 'Median wall-clock time of the slowest workflow over its last 10 successful runs. Hover a value for the workflow name.',
+    issues: 'Open issues, not counting pull requests.',
+    prs: 'Open pull requests. Drafts are counted in brackets.',
+    oldest: 'Age of the oldest open pull request. Older than 90 days is marked.',
+    cov: 'Test coverage reported to Codecov for the development branch.',
+    doc: `Share of modules, classes and functions with a docstring (interrogate, using the repository's own settings). The tick marks the ${GATE}% gate.`,
+    sloc: 'Source lines of Python code (radon), not counting comments and blank lines.',
+    cc: 'Average cyclomatic complexity (CC) per function or method (radon). CC counts the independent paths through the code, so each if, loop, except or boolean operator adds one. 1–5 is grade A (simple).',
+    cx: `Functions graded C or worse by radon, meaning cyclomatic complexity of 11 or more (C 11–20, D 21–30, E 31–40, F 41+). Candidates for splitting. 20 or more is marked.`,
+    tests: 'Number of test functions (def test_…) under tests/. Red means the repository has code but no tests.',
+    commits: 'Non-merge commits on the development branch in the last 12 months.',
+    release: 'Latest GitHub release, or the newest git tag where there is none, with its date.',
+    since: 'Non-merge commits on the development branch that are not in the latest release. ≥ means a lower bound, because the release is older than the cloned history.',
+    unrel: 'Lines added plus deleted in source and tests between master and develop: work that has not been released yet.',
+  };
   sortable(document.getElementById('score-table'), [
     { key: 'repo', label: 'Repository', cell: repoLink, sort: (r) => r.name, text: true },
     { key: 'family', label: 'Family', cls: 'l sec muted', cell: (r) => r.family, sort: (r) => r.family, text: true },
@@ -168,14 +195,14 @@
     { key: 'release', label: 'Release', cls: 'l sec', cell: (r) => (r.release ? `${r.release.tag} · ${r.release.date}` : 'none'), sort: (r) => r.release?.date, text: true },
     { key: 'since', label: 'Commits since release', cell: (r) => (r.since_release?.commits == null ? dash : el('span', { title: `Non-merge commits on ${r.main_branch} not in ${r.since_release.tag}${r.since_release.complete ? '' : ' (lower bound: the release is older than the cloned history)'}`, text: (r.since_release.complete ? '' : '≥') + fmt(r.since_release.commits) })), sort: (r) => r.since_release?.commits },
     { key: 'unrel', label: 'Unreleased lines', cls: 'sec', cell: (r) => n(r.unreleased?.lines), sort: (r) => r.unreleased?.lines },
-  ], repos, hasGH ? { key: 'ci', dir: -1 } : { key: 'commits', dir: -1 });
+  ].map((c) => ({ tip: SCORE_TIPS[c.key], ...c })), repos, hasGH ? { key: 'ci', dir: -1 } : { key: 'commits', dir: -1 });
 
   // ---------------------------------------------------------------- CI matrix
   const ciTable = document.getElementById('ci-table');
   if (!hasGH) {
     ciTable.replaceChildren(el('tbody', {}, el('tr', {}, el('td', { class: 'muted', text: 'CI status needs the GitHub API step of the build.' }))));
   } else {
-    const KEY = ['test.yml', 'tutorial-tests.yml', 'coverage.yml', 'lint-format.yml', 'docs.yml', 'security.yml', 'pypi-test.yml', 'installer.yml', 'quality.yml'];
+    const KEY = ['test.yml', 'tutorial-tests.yml', 'coverage.yml', 'lint-format.yml', 'docs.yml', 'pypi-test.yml', 'installer.yml'];
     const files = new Set();
     repos.forEach((r) => Object.values(r.gh?.ci || {}).forEach((runs) => runs.forEach((x) => files.add(x.file))));
     const cols = KEY.filter((k) => files.has(k));
@@ -295,18 +322,18 @@
   const hot = repos.flatMap((r) => (r.c?.hotspots || []).map((h) => ({ ...h, repo: r.name })));
   const hotTable = document.getElementById('hot-table');
   const q = document.getElementById('hot-q');
-  function drawHot() {
+  const hotView = sortable(hotTable, [
+    { key: 'repo', label: 'Repository', cell: (h) => el('span', { class: 'repo', text: h.repo }), sort: (h) => h.repo, text: true },
+    { key: 'name', label: 'Function', cls: 'l mono', cell: (h) => h.name, sort: (h) => h.name, text: true },
+    { key: 'file', label: 'File', cls: 'l sec mono muted', cell: (h) => `${h.file}:${h.line}`, sort: (h) => `${h.file}:${String(h.line).padStart(6, '0')}`, text: true },
+    { key: 'cc', label: 'CC', cell: (h) => String(h.cc), sort: (h) => h.cc, flag: (h) => (h.cc > 20 ? 'warn' : ''),
+      tip: 'Cyclomatic complexity: the number of independent paths through the function. Above 20 is marked.' },
+    // grades follow CC, so sort by CC to get F before E before D
+    { key: 'rank', label: 'Grade', cell: (h) => h.rank, sort: (h) => h.cc,
+      tip: 'radon grade: A 1–5, B 6–10, C 11–20, D 21–30, E 31–40, F 41+.' },
+  ], hot, { key: 'cc', dir: -1 });
+  q.addEventListener('input', () => {
     const s = q.value.trim().toLowerCase();
-    const rows = hot.filter((h) => !s || `${h.repo} ${h.name} ${h.file}`.toLowerCase().includes(s));
-    hotTable.replaceChildren(
-      el('thead', {}, el('tr', {}, ...['Repository', 'Function', 'File', 'CC', 'Grade'].map((t, i) => el('th', { class: i === 1 ? 'l' : i === 2 ? 'l sec' : '', text: t })))),
-      el('tbody', {}, ...rows.map((h) => el('tr', {},
-        el('td', {}, el('span', { class: 'repo', text: h.repo })),
-        el('td', { class: 'l mono', text: h.name }),
-        el('td', { class: 'l sec mono muted', text: `${h.file}:${h.line}` }),
-        el('td', { class: h.cc > 20 ? 'warn' : '', text: h.cc }),
-        el('td', { text: h.rank })))));
-  }
-  q.addEventListener('input', drawHot);
-  drawHot();
+    hotView.update(hot.filter((h) => !s || `${h.repo} ${h.name} ${h.file}`.toLowerCase().includes(s)));
+  });
 })();
