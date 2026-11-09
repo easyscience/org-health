@@ -49,3 +49,7 @@ Pass `--no-api` to skip GitHub and Codecov and collect only the code and git met
 ## Adding a repository
 
 Add an entry to `repos.yml` with `name`, `family`, `kind` and `source`. Use `source: []` for a repository without Python code.
+
+## License
+
+BSD 3-Clause. See [LICENSE](LICENSE).
