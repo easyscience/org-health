@@ -6,13 +6,15 @@ A page that shows code quality, open issues, pull requests, and CI status across
 
 ## What it shows
 
-- A summary line and totals: failing workflows, open issues and PRs, source lines, tests and commits.
+- A summary line and totals: failing workflows, open issues, open PRs and commits.
 - A scorecard with one sortable row per repository: CI, slowest CI workflow (median duration), issues, PRs, oldest PR, Codecov coverage, docstring coverage against core's 45% gate, complexity, tests, commits, latest release, commits since that release, and lines on develop that are not yet on master.
 - CI status: the latest non-PR run of each key workflow on master and develop, linked to the run, with its duration.
 - Open pull requests, oldest first, with their size in lines changed, and issue/PR flow over the last 90 days.
 - Commits per month for each repository, all on one scale.
 - Trends over time from `history.json`, which gains one point per repository on each build.
 - The most complex functions in each repository.
+
+For a wall screen, use **poster view**: click "Poster view" in the header, press `P`, or open the page with `?poster` (https://easyscience.github.io/org-health/?poster). It fills the window, scales the type to the screen and hides the explanatory notes and secondary columns. It also reloads every 15 minutes to pick up new builds. `Esc` leaves it.
 
 ## How it works
 

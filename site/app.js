@@ -28,6 +28,33 @@
   };
   const hideTip = () => { tip.hidden = true; };
 
+  // ---------------------------------------------------------------- poster view
+  // Full-bleed, large-type layout for a wall screen. Kept in the URL (?poster) so a screen can bookmark it;
+  // while on, the page reloads every 15 minutes to pick up new builds.
+  const root = document.documentElement;
+  const posterBtn = document.getElementById('poster-toggle');
+  const isPoster = () => root.classList.contains('poster');
+  let reloadTimer = null;
+  function setPoster(on) {
+    root.classList.toggle('poster', on);
+    posterBtn.setAttribute('aria-pressed', String(on));
+    posterBtn.textContent = on ? 'Leave poster view' : 'Poster view';
+    const u = new URL(location.href);
+    if (on) u.searchParams.set('poster', '1'); else u.searchParams.delete('poster');
+    window.history.replaceState(null, '', u); // window.: `history` below is the trend data
+    clearTimeout(reloadTimer);
+    if (on) reloadTimer = setTimeout(() => location.reload(), 15 * 60 * 1000);
+    hideTip();
+    window.dispatchEvent(new Event('resize')); // charts redraw at the new size
+  }
+  posterBtn.addEventListener('click', () => setPoster(!isPoster()));
+  document.addEventListener('keydown', (ev) => {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || (ev.target instanceof Element && ev.target.closest('input, select, textarea'))) return;
+    if (ev.key === 'p' || ev.key === 'P') setPoster(!isPoster());
+    else if (ev.key === 'Escape' && isPoster()) setPoster(false);
+  });
+  if (new URLSearchParams(location.search).has('poster') || location.hash === '#poster') setPoster(true);
+
   let latest, history = [];
   try {
     latest = await (await fetch('data/latest.json', { cache: 'no-cache' })).json();
@@ -289,7 +316,9 @@
       box.append(el('p', { class: 'note', text: 'Trends appear after the second build that records this measure.' }));
       return;
     }
-    const W = Math.max(320, box.clientWidth), H = 260, m = { t: 10, r: 120, b: 24, l: 40 };
+    const fs = isPoster() ? 15 : 11; // end-label size; axis text follows the CSS font size
+    const W = Math.max(320, box.clientWidth), H = isPoster() ? 340 : 260;
+    const m = isPoster() ? { t: 12, r: 190, b: 30, l: 52 } : { t: 10, r: 120, b: 24, l: 40 };
     const x = d3.scaleUtc(d3.extent(pts, (p) => p.d), [m.l, W - m.r]);
     const y = d3.scaleLinear([0, d3.max(pts, (p) => p[key])], [H - m.b, m.t]).nice();
     const svg = d3.select(box).append('svg').attr('viewBox', `0 0 ${W} ${H}`);
@@ -307,12 +336,12 @@
       const last = s[s.length - 1];
       labels.push({ x: x(last.d) + 6, y: y(last[key]), c, t: `${repo} ${fmt(last[key])}` });
     });
-    // keep end labels at least 13px apart
+    // keep end labels at least one line apart
     labels.sort((a, b2) => a.y - b2.y);
-    for (let i = 1; i < labels.length; i++) labels[i].y = Math.max(labels[i].y, labels[i - 1].y + 13);
+    for (let i = 1; i < labels.length; i++) labels[i].y = Math.max(labels[i].y, labels[i - 1].y + fs + 2);
     const over = labels.length ? labels[labels.length - 1].y - (H - m.b) : 0;
     if (over > 0) labels.forEach((l) => { l.y -= over; });
-    labels.forEach((l) => svg.append('text').attr('x', l.x).attr('y', l.y).attr('dy', '0.32em').attr('font-size', 11).attr('fill', l.c).text(l.t));
+    labels.forEach((l) => svg.append('text').attr('x', l.x).attr('y', l.y).attr('dy', '0.32em').attr('font-size', fs).attr('fill', l.c).text(l.t));
   }
   sel.addEventListener('change', drawTrend);
   drawTrend();
