@@ -244,7 +244,12 @@ def run_minutes(run: dict) -> float | None:
     return round(max(0.0, (t(b) - t(a)).total_seconds() / 60), 1)
 
 
-def github_metrics(gh: GitHub, owner: str, name: str, branches: list[str]) -> dict:
+def workflow_files(tree: str) -> set[str]:
+    return {os.path.basename(p) for p in glob.glob(os.path.join(tree, '.github', 'workflows', '*.y*ml'))}
+
+
+def github_metrics(gh: GitHub, owner: str, name: str, branches: list[str], wf_files: dict[str, set[str]]) -> dict:
+    """wf_files: workflow file names present on each branch; runs of workflows deleted since are ignored."""
     base = f'/repos/{owner}/{name}'
     cutoff = NOW - dt.timedelta(days=RECENT_DAYS)
     cutoff_iso = cutoff.strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -277,6 +282,11 @@ def github_metrics(gh: GitHub, owner: str, name: str, branches: list[str]) -> di
         by_wf = collections.defaultdict(list)
         for r in runs:  # newest first
             if r['event'] in ('pull_request', 'pull_request_target'):
+                continue
+            # GitHub keeps the runs (and the registration) of a workflow after its file is deleted, so its last
+            # result would otherwise stay on the board forever. Dynamic workflows (e.g. Pages builds) have no file.
+            wpath = r.get('path') or ''
+            if wpath.startswith('.github/workflows/') and os.path.basename(wpath) not in wf_files.get(br, ()):
                 continue
             by_wf[r['name']].append(r)
         ci[br] = []
@@ -358,18 +368,19 @@ def main() -> None:
         main_branch = branches[-1]
         rec = {k: spec.get(k) for k in ('name', 'family', 'kind')}
         rec.update(default_branch=default, main_branch=main_branch, code={}, url=f'https://github.com/{owner}/{name}')
+        wf_files = {}
         for br in branches:
             tree = worktree(path, f'origin/{br}', os.path.join(trees, f'{name}-{br}'))
+            wf_files[br] = workflow_files(tree)
             rec['code'][br] = code_metrics(tree, sources)
             rec['code'][br] and rec['code'][br].update(sha=sh('git rev-parse --short HEAD', cwd=tree).strip())
         rec['git'] = git_activity(path, f'origin/{main_branch}')
         rec['unreleased'] = drift(path, f'origin/{default}', f'origin/{develop}', sources) if len(branches) > 1 else None
-        wt = os.path.join(trees, f'{name}-{main_branch}')
-        rec['workflows'] = sorted(os.path.basename(p) for p in glob.glob(os.path.join(wt, '.github/workflows/*.y*ml')))
+        rec['workflows'] = sorted(wf_files[main_branch])
         tags = sh("git for-each-ref refs/tags --sort=-creatordate --format='%(refname:short)|%(creatordate:short)'", cwd=path).split()
         rec['latest_tag'] = dict(zip(('tag', 'date'), tags[0].split('|'))) if tags else None
         if gh:
-            rec['github'] = github_metrics(gh, owner, name, branches)
+            rec['github'] = github_metrics(gh, owner, name, branches, wf_files)
             rec['coverage'] = {br: codecov(owner, name, br) for br in branches}
         # same tag the page shows as the release: the GitHub release, else the newest git tag
         tag = ((rec.get('github') or {}).get('release') or {}).get('tag') or (rec['latest_tag'] or {}).get('tag')
